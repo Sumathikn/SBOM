@@ -17,27 +17,6 @@ Despite the growing regulatory requirements and security benefits of SBOMs, orga
 4. **Risk Scoring** using CVSS, EPSS exploitability analysis
 5. **Interactive Dashboard** for visualization and reporting
 
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    Frontend Dashboard                │
-│              (HTML / CSS / JavaScript)               │
-├─────────────────────────────────────────────────────┤
-│                     FastAPI Backend                  │
-├──────────┬──────────┬───────────┬───────────────────┤
-│  SBOM    │  Vuln    │   Risk    │   SBOM            │
-│Generator │ Scanner  │  Scorer   │  Manager           │
-├──────────┴──────────┴───────────┴───────────────────┤
-│            SQLite Database / File Storage            │
-└─────────────────────────────────────────────────────┘
-         ↕               ↕               ↕
-    NVD API          OSV API       GitHub Advisory
-```
-
----
 
 ## 🚀 Quick Start
 
@@ -172,10 +151,3 @@ git push origin feature/your-feature
 ### Output (SBOM Formats)
 - **CycloneDX** v1.5 (JSON)
 - **SPDX** v2.3 (JSON)
-
----
-
-## 📜 License
-
-This project is developed as part of the MCA program at Chanakya University.  
-For academic use only.
