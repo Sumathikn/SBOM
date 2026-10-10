@@ -1,0 +1,9 @@
+{
+  "include": [
+    "SBOMGuard"
+  ],
+  "extraPaths": [
+    "SBOMGuard"
+  ],
+  "pythonPath": "/usr/local/bin/python3"
+}
