@@ -220,7 +220,7 @@ pytest --cov=sbomguard --cov-report=term-missing tests/
 ```
 
 **Results:**
-- **95 passed** in 6.04s
+- **95 passed**  
 - **86% statement coverage** across all modules
 
 ---
