@@ -74,7 +74,7 @@ class Component(BaseModel):
 class Vulnerability(BaseModel):
     """Represents a discovered vulnerability."""
     id: str                             # CVE-2024-XXXX or GHSA-XXXX
-    source: str                         # nvd, osv, github
+    source: str = "osv"                 # nvd, osv, github
     title: str = ""
     description: str = ""
     severity: Severity = Severity.NONE
@@ -84,8 +84,11 @@ class Vulnerability(BaseModel):
     epss_percentile: float = 0.0
     cwe_ids: list[str] = Field(default_factory=list)
     affected_component: str = ""
+    package_name: str = ""
     affected_versions: str = ""
+    installed_version: str = ""
     fixed_version: Optional[str] = None
+    fixed_versions: list[str] = Field(default_factory=list)
     references: list[str] = Field(default_factory=list)
     published_date: Optional[str] = None
     last_modified: Optional[str] = None

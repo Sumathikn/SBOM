@@ -1,0 +1,50 @@
+name: "SBOMGuard Security Scanner"
+description: "Generates SBOMs, audits supply chain dependencies, and exports SARIF 2.1.0"
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  manifest:
+    description: "Path to dependency manifest"
+    required: true
+    default: "requirements.txt"
+  format:
+    description: "SBOM output format standard (cyclonedx, spdx)"
+    required: false
+    default: "cyclonedx"
+  fail_on:
+    description: "Failure severity threshold (none, low, medium, high, critical)"
+    required: false
+    default: "high"
+  max_cvss:
+    description: "Maximum allowable CVSS threshold"
+    required: false
+    default: "7.0"
+  sarif_output:
+    description: "Output path for SARIF report"
+    required: false
+    default: "sbomguard.sarif"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install SBOMGuard
+      shell: bash
+      run: |
+        pip install --upgrade pip
+        pip install -e ${{ github.action_path }}/../../../SBOMGuard/
+
+    - name: Execute Scan
+      shell: bash
+      run: |
+        python -m sbomguard scan "${{ inputs.manifest }}" \
+          --format "${{ inputs.format }}" \
+          --fail-on "${{ inputs.fail_on }}" \
+          --max-cvss "${{ inputs.max_cvss }}" \
+          --sarif "${{ inputs.sarif_output }}"

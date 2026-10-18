@@ -1,10 +1,10 @@
 """
-SBOMGuard — SBOM Management Engine
-Handles SBOM storage, retrieval, version control, comparison (diff),
-validation, and quality scoring.
+SBOMGuard — SBOM Management Engine (Week 6 Enhanced)
+Handles SBOM storage, retrieval, version drift analysis, SemVer diffing,
+hierarchical tree diffs, validation, and quality scoring.
 """
-
-from typing import Optional
+from typing import Optional, List, Dict, Any
+from packaging.version import parse as parse_version, InvalidVersion
 
 from sbomguard.models import SBOM, Component, SBOMDiff
 from sbomguard.database import get_sbom, list_sboms, delete_sbom
@@ -12,14 +12,14 @@ from sbomguard.database import get_sbom, list_sboms, delete_sbom
 
 class SBOMManager:
     """
-    Manages the SBOM repository: storage, versioning, diffing.
+    Manages the SBOM repository: storage, versioning, advanced diffing with SemVer drift analysis.
     """
 
     def get(self, sbom_id: str) -> Optional[dict]:
         """Retrieve an SBOM by its ID."""
         return get_sbom(sbom_id)
 
-    def list_all(self, limit: int = 50) -> list[dict]:
+    def list_all(self, limit: int = 50) -> List[dict]:
         """List all stored SBOMs (metadata only)."""
         return list_sboms(limit)
 
@@ -29,100 +29,160 @@ class SBOMManager:
 
     def compare(self, sbom_a_id: str, sbom_b_id: str) -> dict:
         """
-        Compare two SBOMs and return the differences.
-
-        Returns a SBOMDiff with added, removed, and version-changed components.
+        Compare two SBOMs and produce an advanced version drift analysis.
+        Includes SemVer drift categorization (Major/Minor/Patch), breaking risks,
+        direct vs transitive breakdown, and tree diff representation.
         """
         sbom_a = get_sbom(sbom_a_id)
         sbom_b = get_sbom(sbom_b_id)
 
         if not sbom_a:
-            raise ValueError(f"SBOM not found: {sbom_a_id}")
+            raise ValueError(f"Base SBOM not found: {sbom_a_id}")
         if not sbom_b:
-            raise ValueError(f"SBOM not found: {sbom_b_id}")
+            raise ValueError(f"Target SBOM not found: {sbom_b_id}")
 
-        # Build component maps: name → component dict
         comps_a = {c["name"]: c for c in sbom_a.get("components", [])}
         comps_b = {c["name"]: c for c in sbom_b.get("components", [])}
 
         names_a = set(comps_a.keys())
         names_b = set(comps_b.keys())
 
-        # Added = in B but not in A
-        added = [comps_b[n] for n in (names_b - names_a)]
+        # Added components (in B, not in A)
+        added = [comps_b[n] for n in sorted(names_b - names_a)]
 
-        # Removed = in A but not in B
-        removed = [comps_a[n] for n in (names_a - names_b)]
+        # Removed components (in A, not in B)
+        removed = [comps_a[n] for n in sorted(names_a - names_b)]
 
-        # Version changes = same name, different version
+        # Modified components with SemVer drift analysis
         version_changes = []
-        for name in (names_a & names_b):
-            ver_a = comps_a[name].get("version", "")
-            ver_b = comps_b[name].get("version", "")
+        major_drift_count = 0
+        minor_drift_count = 0
+        patch_drift_count = 0
+
+        for name in sorted(names_a & names_b):
+            c_a = comps_a[name]
+            c_b = comps_b[name]
+            ver_a = c_a.get("version", "")
+            ver_b = c_b.get("version", "")
+
             if ver_a != ver_b:
+                drift_type, breaking_risk = self._classify_version_drift(ver_a, ver_b)
+                if drift_type == "major":
+                    major_drift_count += 1
+                elif drift_type == "minor":
+                    minor_drift_count += 1
+                elif drift_type == "patch":
+                    patch_drift_count += 1
+
                 version_changes.append({
                     "name": name,
+                    "ecosystem": c_b.get("ecosystem") or c_a.get("ecosystem"),
+                    "purl_before": c_a.get("purl"),
+                    "purl_after": c_b.get("purl"),
                     "version_before": ver_a,
                     "version_after": ver_b,
+                    "is_direct": c_b.get("is_direct", True),
+                    "depth": c_b.get("depth", 0),
+                    "drift_type": drift_type,
+                    "breaking_risk": breaking_risk,
                 })
 
-        # Build summary
-        parts = []
+        # Direct vs Transitive drift counts
+        direct_drift = [vc for vc in version_changes if vc.get("is_direct")]
+        transitive_drift = [vc for vc in version_changes if not vc.get("is_direct")]
+
+        # Summary
+        summary_parts = []
         if added:
-            parts.append(f"{len(added)} component(s) added")
+            summary_parts.append(f"{len(added)} added")
         if removed:
-            parts.append(f"{len(removed)} component(s) removed")
+            summary_parts.append(f"{len(removed)} removed")
         if version_changes:
-            parts.append(f"{len(version_changes)} version change(s)")
-        summary = "; ".join(parts) if parts else "No differences found."
+            summary_parts.append(
+                f"{len(version_changes)} modified ({major_drift_count} major, {minor_drift_count} minor, {patch_drift_count} patch)"
+            )
+        summary = "; ".join(summary_parts) if summary_parts else "No differences found (Identical SBOMs)."
 
         return {
-            "sbom_a_id": sbom_a_id,
-            "sbom_b_id": sbom_b_id,
+            "sbom_a": {
+                "id": sbom_a_id,
+                "name": sbom_a.get("name", ""),
+                "version": sbom_a.get("version", "1"),
+                "component_count": len(comps_a),
+                "created_at": sbom_a.get("created_at"),
+            },
+            "sbom_b": {
+                "id": sbom_b_id,
+                "name": sbom_b.get("name", ""),
+                "version": sbom_b.get("version", "1"),
+                "component_count": len(comps_b),
+                "created_at": sbom_b.get("created_at"),
+            },
+            "stats": {
+                "added_count": len(added),
+                "removed_count": len(removed),
+                "modified_count": len(version_changes),
+                "major_drift_count": major_drift_count,
+                "minor_drift_count": minor_drift_count,
+                "patch_drift_count": patch_drift_count,
+                "direct_drift_count": len(direct_drift),
+                "transitive_drift_count": len(transitive_drift),
+            },
             "added_components": added,
             "removed_components": removed,
             "version_changes": version_changes,
+            "direct_drift": direct_drift,
+            "transitive_drift": transitive_drift,
             "summary": summary,
         }
 
-    def validate(self, sbom_data: dict) -> dict:
-        """
-        Validate an SBOM for completeness and correctness.
+    @staticmethod
+    def _classify_version_drift(ver_before: str, ver_after: str) -> tuple[str, str]:
+        """Classify SemVer drift between two versions."""
+        try:
+            vb = parse_version(ver_before)
+            va = parse_version(ver_after)
 
-        Returns a validation report with issues found.
-        """
+            maj_b = getattr(vb, "major", 0)
+            maj_a = getattr(va, "major", 0)
+            min_b = getattr(vb, "minor", 0)
+            min_a = getattr(va, "minor", 0)
+
+            if maj_a != maj_b:
+                return "major", "high"
+            if min_a != min_b:
+                return "minor", "medium"
+            return "patch", "low"
+        except Exception:
+            return "unknown", "medium"
+
+    def validate(self, sbom_data: dict) -> dict:
+        """Validate an SBOM for completeness and compliance."""
         issues = []
         warnings = []
-
         components = sbom_data.get("components", [])
 
         if not components:
-            issues.append("SBOM contains no components.")
+            issues.append("SBOM contains zero components.")
 
         for i, comp in enumerate(components):
             name = comp.get("name", "")
             version = comp.get("version", "")
-
             if not name:
-                issues.append(f"Component #{i+1} has no name.")
+                issues.append(f"Component #{i+1} has no identifier/name.")
             if not version or version == "unknown":
-                warnings.append(f"Component '{name}' has unknown version.")
+                warnings.append(f"Component '{name}' has unpinned/unknown version.")
             if not comp.get("purl"):
-                warnings.append(f"Component '{name}' is missing a Package URL (PURL).")
+                warnings.append(f"Component '{name}' is missing a canonical Package URL (PURL).")
             if not comp.get("license"):
-                warnings.append(f"Component '{name}' has no license information.")
+                warnings.append(f"Component '{name}' has no declared license information.")
 
         is_valid = len(issues) == 0
-        quality_score = sbom_data.get("quality_score", 0.0)
-
         return {
             "is_valid": is_valid,
-            "quality_score": quality_score,
+            "quality_score": sbom_data.get("quality_score", 0.0),
             "issues": issues,
             "warnings": warnings,
             "component_count": len(components),
-            "summary": (
-                "SBOM is valid." if is_valid
-                else f"SBOM has {len(issues)} issue(s) that need to be resolved."
-            ),
+            "summary": "SBOM is valid." if is_valid else f"Found {len(issues)} critical issue(s).",
         }

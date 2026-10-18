@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.env
+.env.local
+.env.production
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Node / Frontend
+node_modules/
+.npm/
+
+# Test & Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Databases & logs
+*.db
+*.sqlite3
+*.log
+logs/
+
+# Generated Reports & Artifacts
+*.sarif
+data/test.sarif

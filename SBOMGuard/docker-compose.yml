@@ -1,0 +1,65 @@
+services:
+  # ─── PostgreSQL 16 Database ───────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: sbomguard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-sbomguard}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sbomguard"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis Caching & Queue ────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: sbomguard-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─── SBOMGuard API Backend ────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sbomguard-api
+    restart: unless-stopped
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      DEBUG: "false"
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sbomguard}"
+      SYNC_DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sbomguard}"
+      REDIS_URL: "redis://redis:6379/0"
+      REDIS_ENABLED: "true"
+      NVD_API_KEY: "${NVD_API_KEY:-}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+
+volumes:
+  postgres_data:
+  redis_data:

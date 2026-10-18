@@ -1,0 +1,79 @@
+name: SBOMGuard PR Gatekeeper & SARIF Code Scanning
+
+on:
+  workflow_call:
+    inputs:
+      manifest_path:
+        description: "Path to dependency manifest (requirements.txt, package.json, pom.xml, go.mod)"
+        required: false
+        default: "requirements.txt"
+        type: string
+      fail_on:
+        description: "Severity threshold to fail gate (none, low, medium, high, critical)"
+        required: false
+        default: "high"
+        type: string
+      max_cvss:
+        description: "Maximum allowable CVSS score"
+        required: false
+        default: "7.0"
+        type: string
+      fail_on_kev:
+        description: "Fail if any CVE is in CISA KEV catalog"
+        required: false
+        default: "true"
+        type: string
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  gatekeep:
+    name: SBOM Security Gate & SARIF Ingestion
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install SBOMGuard CLI
+        run: |
+          pip install --upgrade pip
+          pip install -e SBOMGuard/
+
+      - name: Cache Vulnerability Feeds
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/sbomguard
+          key: ${{ runner.os }}-sbomguard-threatintel-${{ hashFiles('**/requirements.txt', '**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-sbomguard-threatintel-
+
+      - name: Run SBOMGuard Scan & Gatekeeper
+        id: sbomguard-scan
+        run: |
+          MANIFEST="${{ inputs.manifest_path || 'SBOMGuard/data/sample/requirements.txt' }}"
+          FAIL_ON="${{ inputs.fail_on || 'high' }}"
+          MAX_CVSS="${{ inputs.max_cvss || '7.0' }}"
+          
+          python -m sbomguard scan "$MANIFEST" \
+            --fail-on "$FAIL_ON" \
+            --max-cvss "$MAX_CVSS" \
+            --sarif sbomguard-results.sarif \
+            --json scan-output.json
+
+      - name: Upload SARIF to GitHub Code Scanning Alerts
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sbomguard-results.sarif
+          category: sbomguard-supply-chain

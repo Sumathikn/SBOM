@@ -244,13 +244,19 @@ class RiskScorer:
                 f"to fix {len(fixed_versions)} critical/high vulnerability(ies)."
             )
 
+        kev_vulns = [v for v in vulns if getattr(v, "in_kev", False)]
+        if kev_vulns:
+            lines.append(
+                f"🚨 CISA KEV ACTIVE THREAT: {len(kev_vulns)} vulnerability(ies) in CISA Known Exploited Vulnerabilities catalog! Prioritize immediate remediation."
+            )
+
         if risk_level in (RiskLevel.CRITICAL, RiskLevel.HIGH):
             lines.append(
                 f"🔴 PRIORITY: Immediate action required. "
                 f"{component_name}@{component_version} has {len(vulns)} known vulnerability(ies)."
             )
 
-            exploit_vulns = [v for v in vulns if v.exploit_available]
+            exploit_vulns = [v for v in vulns if v.exploit_available or getattr(v, "in_kev", False)]
             if exploit_vulns:
                 lines.append(
                     f"🚨 EXPLOIT AVAILABLE for {len(exploit_vulns)} vulnerability(ies). "

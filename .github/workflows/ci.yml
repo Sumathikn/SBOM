@@ -1,0 +1,97 @@
+name: SBOMGuard Enterprise CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  backend-test:
+    name: Backend Tests & Coverage (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sbomguard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r SBOMGuard/requirements.txt
+          pip install pytest-cov hypothesis ruff mypy
+
+      - name: Run Database Migrations (Alembic)
+        env:
+          SYNC_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/sbomguard
+        run: |
+          cd SBOMGuard
+          alembic upgrade head
+
+      - name: Run Test Suite with Coverage
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/sbomguard
+          SYNC_DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/sbomguard
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          cd SBOMGuard
+          pytest tests/ -v --cov=sbomguard --cov-report=xml --cov-report=term
+
+  frontend-build:
+    name: Modern React Frontend Build & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: SBOMGuard/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: |
+          cd SBOMGuard/frontend
+          npm ci
+
+      - name: Build production bundle
+        run: |
+          cd SBOMGuard/frontend
+          npm run build
