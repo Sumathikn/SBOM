@@ -218,19 +218,3 @@ Execute the test suite (Unit, Integration, API, Property-Based, and CLI):
 ```bash
 pytest --cov=sbomguard --cov-report=term-missing tests/
 ```
-
-**Results:**
-- **95 passed**  
-- **86% statement coverage** across all modules
-
----
-
-## 📜 Deliverables Checklist (Week 6 Milestone)
-
-- [x] **PostgreSQL 16 Migration**: SQLAlchemy 2.0 asyncpg, connection pooling, high-cardinality indexes, Alembic migrations.
-- [x] **React 18 + TypeScript Modern Frontend**: Single-page application with Tailwind CSS, Lucide icons, and dark mode.
-- [x] **Interactive SBOM Diff & Version Drift Visualizer**: Side-by-side drift, tree visualizer, and release timeline.
-- [x] **Remediation & Intelligence Engine**: Multi-registry version resolution, CISA KEV + EPSS integration, unified diff PR generator.
-- [x] **DevSecOps CLI & CI/CD**: Local `sbomguard scan`, composite actions, PR gatekeeping, and SARIF 2.1.0 export.
-- [x] **Performance & Observability**: Redis caching, OSV batch querying, Prometheus metrics (`/metrics`), and health probes.
-- [x] **Testing & Verification**: 95 tests passed, 86% coverage, comprehensive open-source benchmark report.
