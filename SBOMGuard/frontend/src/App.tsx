@@ -12,19 +12,24 @@ import { api } from "./services/api";
 
 export const App: React.FC = () => {
   const [activeView, setActiveView] = useState<string>("dashboard");
-  const [darkMode, setDarkMode] = useState<boolean>(true);
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem("sbomguard_theme");
+    return saved !== null ? saved === "dark" : true;
+  });
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [sboms, setSboms] = useState<SBOM[]>([]);
   const [scans, setScans] = useState<ScanResult[]>([]);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [targetSbomId, setTargetSbomId] = useState<string | undefined>(undefined);
 
-  // Sync dark mode class with root html
+  // Sync dark mode class with root html and localStorage
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add("dark");
+      localStorage.setItem("sbomguard_theme", "dark");
     } else {
       document.documentElement.classList.remove("dark");
+      localStorage.setItem("sbomguard_theme", "light");
     }
   }, [darkMode]);
 
@@ -66,7 +71,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#07090E] text-slate-100 flex flex-col relative selection:bg-cyan-500 selection:text-black">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#07090E] text-slate-800 dark:text-slate-100 flex flex-col relative selection:bg-cyan-500 selection:text-black transition-colors duration-200">
       {/* Background ambient lighting */}
       <div className="ambient-glow-1" />
       <div className="ambient-glow-2" />

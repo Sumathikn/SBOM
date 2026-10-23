@@ -1,0 +1,101 @@
+version: "3.8"
+
+services:
+  # ─── PostgreSQL 16 Enterprise Storage Engine ──────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: sbomguard-prod-postgres
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sbomadmin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set secure POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-sbomguard_prod}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sbomadmin} -d ${POSTGRES_DB:-sbomguard_prod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+  # ─── Redis 7 High-Throughput Cache & Broker ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: sbomguard-prod-redis
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_prod_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+
+  # ─── SBOMGuard Hardened Application Server ──────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sbomguard/sbomguard:2.0.0
+    container_name: sbomguard-prod-api
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      DEBUG: "false"
+      ENVIRONMENT: "production"
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-sbomadmin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sbomguard_prod}"
+      SYNC_DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-sbomadmin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sbomguard_prod}"
+      REDIS_URL: "redis://redis:6379/0"
+      REDIS_ENABLED: "true"
+      NVD_API_KEY: "${NVD_API_KEY:-}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      DEFAULT_TENANT_ID: "production"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - sbom_prod_storage:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2048M
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+volumes:
+  postgres_prod_data:
+  redis_prod_data:
+  sbom_prod_storage:

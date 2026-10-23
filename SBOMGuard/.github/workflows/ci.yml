@@ -1,0 +1,119 @@
+name: SBOMGuard CI/CD Pipeline & PR Gatekeeper
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-typecheck:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Linting & Security Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy bandit
+
+      - name: Run Ruff Linter
+        run: |
+          ruff check sbomguard config tests
+
+      - name: Run Bandit AST Security Scan
+        run: |
+          bandit -r sbomguard -ll -ii -x tests/
+
+  unit-and-integration-tests:
+    name: Unit & Integration Tests (PostgreSQL + Redis)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sbomguard_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
+
+      - name: Run Test Suite with Pytest & Coverage
+        env:
+          DATABASE_URL: "postgresql+asyncpg://postgres:postgres@localhost:5432/sbomguard_test"
+          SYNC_DATABASE_URL: "postgresql+psycopg://postgres:postgres@localhost:5432/sbomguard_test"
+          REDIS_URL: "redis://localhost:6379/0"
+          REDIS_ENABLED: "true"
+        run: |
+          pytest --cov=sbomguard --cov-report=xml --cov-report=term-missing tests/
+
+      - name: Enforce PR DevSecOps Gatekeeper on Project Itself
+        run: |
+          sbomguard scan requirements.txt \
+            --format cyclonedx \
+            --fail-on critical \
+            --max-cvss 9.0 \
+            --sarif results.sarif \
+            --attest sbomguard.attest.json
+
+      - name: Upload SARIF Security Scan Results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+
+  docker-build:
+    name: Multi-Stage Production Container Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Production Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: sbomguard/sbomguard:ci-test

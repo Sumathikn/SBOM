@@ -90,6 +90,7 @@ class Vulnerability(BaseModel):
     fixed_version: Optional[str] = None
     fixed_versions: list[str] = Field(default_factory=list)
     references: list[str] = Field(default_factory=list)
+    aliases: list[str] = Field(default_factory=list)
     published_date: Optional[str] = None
     last_modified: Optional[str] = None
     exploit_available: bool = False

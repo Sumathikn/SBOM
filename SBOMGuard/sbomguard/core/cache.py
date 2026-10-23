@@ -93,3 +93,15 @@ class CacheService:
     def clear() -> None:
         """Clear all in-memory cache items."""
         _in_memory_cache.clear()
+
+    @staticmethod
+    def ping() -> bool:
+        """Check if Redis connection is active and healthy."""
+        client = get_redis_client()
+        if client is not None:
+            try:
+                return bool(client.ping())
+            except Exception:
+                return False
+        return False
+

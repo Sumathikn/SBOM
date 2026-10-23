@@ -26,6 +26,15 @@ HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8000"))
 DEBUG = os.getenv("DEBUG", "true").lower() == "true"
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO" if not DEBUG else "DEBUG").upper()
+
+# ─── CORS & Security ────────────────────────────────────────────────────────
+# Comma-separated list of allowed origins. Use '*' only in development.
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000,http://localhost:5173").split(",")
+    if origin.strip()
+]
 
 # ─── Database Configuration (PostgreSQL 16) ──────────────────────────────────
 POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
@@ -99,3 +108,11 @@ SUPPORTED_MANIFESTS = [
 FAIL_ON_SEVERITY = os.getenv("FAIL_ON_SEVERITY", "high").lower()
 FAIL_ON_CVSS = float(os.getenv("FAIL_ON_CVSS", "7.0"))
 FAIL_ON_KEV = os.getenv("FAIL_ON_KEV", "true").lower() == "true"
+
+# ─── Rate Limiting ──────────────────────────────────────────────────────────
+RATE_LIMIT_RPM = int(os.getenv("RATE_LIMIT_RPM", "240"))
+RATE_LIMIT_BURST = int(os.getenv("RATE_LIMIT_BURST", "60"))
+
+# ─── Upload Limits ──────────────────────────────────────────────────────────
+MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "25"))
+MAX_COMPONENTS_PER_SBOM = int(os.getenv("MAX_COMPONENTS_PER_SBOM", "5000"))

@@ -1,0 +1,64 @@
+name: SBOMGuard Release Pipeline
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release-package-and-docker:
+    name: Build & Publish Release Artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Build Tools
+        run: |
+          python -m pip install --upgrade pip build wheel
+
+      - name: Build Python CLI Wheel & Source Distribution
+        run: |
+          python -m build
+
+      - name: Generate CycloneDX SBOM for SBOMGuard Release
+        run: |
+          pip install -r requirements.txt
+          pip install -e .
+          sbomguard generate requirements.txt -o sbomguard-sbom-cyclonedx.json -f cyclonedx --attest sbomguard-attestation.json
+          sbomguard generate requirements.txt -o sbomguard-sbom-spdx.json -f spdx
+
+      - name: Set up QEMU & Docker Buildx
+        uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build Production Multi-Arch Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: sbomguard/sbomguard:${{ github.ref_name }},sbomguard/sbomguard:latest
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+            sbomguard-sbom-cyclonedx.json
+            sbomguard-sbom-spdx.json
+            sbomguard-attestation.json
+          draft: false
+          prerelease: false
+          generate_release_notes: true

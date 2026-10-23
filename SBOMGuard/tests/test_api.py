@@ -103,3 +103,40 @@ class TestApiIntegration:
     def test_compare_missing_parameters(self):
         resp = client.post("/api/v1/sbom/compare", json={})
         assert resp.status_code == 400
+
+    def test_security_headers_present(self):
+        resp = client.get("/health/live")
+        assert resp.status_code == 200
+        assert "Content-Security-Policy" in resp.headers
+        assert resp.headers.get("X-Frame-Options") == "DENY"
+        assert resp.headers.get("X-Content-Type-Options") == "nosniff"
+        assert "Strict-Transport-Security" in resp.headers
+
+    def test_circuit_breakers_endpoint(self):
+        resp = client.get("/health/breakers")
+        assert resp.status_code == 200
+        data = resp.json()["breakers"]
+        assert len(data) >= 4
+        assert any(b["name"] == "OSV_API" for b in data)
+
+    def test_governance_attestation_flow(self):
+        # 1. Generate an SBOM first
+        files = {"file": ("requirements.txt", "flask==2.3.0\n", "text/plain")}
+        gen_resp = client.post("/api/v1/sbom/generate", files=files, data={"format": "cyclonedx"})
+        sbom_id = gen_resp.json()["data"]["sbom_id"]
+
+        # 2. Generate in-toto attestation
+        attest_resp = client.get(f"/api/v1/governance/attestation/generate/{sbom_id}")
+        assert attest_resp.status_code == 200
+        attestation = attest_resp.json()["data"]
+        assert attestation["payload"]["_type"] == "https://in-toto.io/Statement/v0.1"
+        assert len(attestation["signatures"]) == 1
+
+        # 3. Verify attestation
+        verify_resp = client.post(
+            "/api/v1/governance/attestation/verify",
+            json={"attestation": attestation, "sbom_id": sbom_id},
+        )
+        assert verify_resp.status_code == 200
+        assert verify_resp.json()["verified"] is True
+

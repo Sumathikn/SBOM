@@ -154,3 +154,34 @@ class TestSBOMGuardCLI:
         result = runner.invoke(app, ["diff", str(sbom_a), str(sbom_b)])
         assert result.exit_code == 0
         assert "Comparing local files" in result.stdout
+
+    def test_generate_with_attestation(self, tmp_path):
+        manifest = tmp_path / "requirements.txt"
+        manifest.write_text("fastapi==0.110.0\n")
+        sbom_out = tmp_path / "sbom.json"
+        attest_out = tmp_path / "sbom.attest.json"
+
+        result = runner.invoke(
+            app,
+            ["generate", str(manifest), "-o", str(sbom_out), "--attest", str(attest_out)],
+        )
+        assert result.exit_code == 0
+        assert sbom_out.exists()
+        assert attest_out.exists()
+        attestation = json.loads(attest_out.read_text())
+        assert attestation["payloadType"] == "application/vnd.in-toto+json"
+        assert len(attestation["signatures"]) == 1
+
+    def test_remediate_command_clean(self, tmp_path):
+        manifest = tmp_path / "requirements.txt"
+        manifest.write_text("clean-package==1.0.0\n")
+
+        with patch("sbomguard.cli.VulnerabilityScanner") as mock_scanner_cls:
+            mock_scanner = MagicMock()
+            mock_scanner_cls.return_value = mock_scanner
+            mock_scanner.scan_components.return_value = []
+
+            result = runner.invoke(app, ["remediate", str(manifest)])
+            assert result.exit_code == 0
+            assert "No vulnerable components require remediation" in result.stdout
+

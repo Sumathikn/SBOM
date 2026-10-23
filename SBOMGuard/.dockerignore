@@ -1,0 +1,47 @@
+# Ignore IDE / OS files
+.venv
+__pycache__
+*.pyc
+*.pyo
+.git
+.github
+.hypothesis
+.pytest_cache
+.ruff_cache
+.coverage
+*.egg-info
+
+# Ignore development databases & local data
+data/sbomguard.db
+data/sbomguard_v2.db
+data/uploads/*
+data/sboms/*
+data/test.sarif
+
+# Ignore local config files
+.env
+.env.*
+!.env.example
+
+# Ignore test infrastructure
+tests/
+docs/
+*.md
+!README.md
+
+# Ignore frontend source (only dist is needed)
+frontend/src/
+frontend/node_modules/
+frontend/css/
+frontend/js/
+frontend/tsconfig*.json
+frontend/tailwind.config.js
+frontend/postcss.config.js
+frontend/vite.config.ts
+frontend/package-lock.json
+frontend/legacy.html
+
+# Ignore CI & Alembic dev artifacts
+.vscode/
+alembic/
+alembic.ini

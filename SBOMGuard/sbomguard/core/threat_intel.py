@@ -9,6 +9,7 @@ import httpx
 
 from config.settings import CISA_KEV_FEED_URL, EPSS_API_BASE
 from sbomguard.core.cache import CacheService
+from sbomguard.core.circuit_breaker import cisa_kev_breaker, epss_breaker
 from sbomguard.models import Vulnerability
 
 logger = logging.getLogger("sbomguard.threat_intel")
@@ -50,9 +51,11 @@ class ThreatIntelService:
             return cached
 
         try:
+            cisa_kev_breaker.check_state()
             async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
                 resp = await client.get(CISA_KEV_FEED_URL)
                 if resp.status_code == 200:
+                    cisa_kev_breaker.record_success()
                     data = resp.json()
                     catalog = {}
                     for item in data.get("vulnerabilities", []):
@@ -71,7 +74,10 @@ class ThreatIntelService:
                         CacheService.set(KEV_CACHE_KEY, catalog, ttl_seconds=KEV_TTL)
                         self._kev_map.update(catalog)
                         return catalog
+                else:
+                    cisa_kev_breaker.record_failure(Exception(f"HTTP {resp.status_code}"))
         except Exception as e:
+            cisa_kev_breaker.record_failure(e)
             logger.debug(f"Failed to fetch live CISA KEV feed ({e}), using fallback.")
 
         return self._kev_map
@@ -111,10 +117,12 @@ class ThreatIntelService:
 
         result = {"epss": 0.0, "percentile": 0.0}
         try:
+            epss_breaker.check_state()
             async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
                 url = f"{EPSS_API_BASE}?cve={clean_cve}"
                 resp = await client.get(url)
                 if resp.status_code == 200:
+                    epss_breaker.record_success()
                     data = resp.json()
                     epss_data = data.get("data", [])
                     if epss_data:
@@ -122,25 +130,32 @@ class ThreatIntelService:
                         pct = float(epss_data[0].get("percentile", 0.0))
                         result = {"epss": score, "percentile": pct}
                         CacheService.set(cache_key, result, ttl_seconds=EPSS_TTL)
+                else:
+                    epss_breaker.record_failure(Exception(f"HTTP {resp.status_code}"))
         except Exception as e:
+            epss_breaker.record_failure(e)
             logger.debug(f"EPSS lookup failed for {clean_cve}: {e}")
 
         return result
 
     def enrich_vulnerability(self, vuln: Vulnerability) -> Vulnerability:
         """Enrich a vulnerability record with KEV and EPSS signals."""
-        cve = vuln.id.strip().upper()
-        if self.is_in_kev(cve):
-            vuln.in_kev = True
-            vuln.exploit_available = True
+        candidates = [vuln.id.strip().upper()] + [a.strip().upper() for a in getattr(vuln, "aliases", [])]
 
-        # Check cached EPSS
-        cached_epss = CacheService.get(f"threat_intel:epss:{cve}")
-        if cached_epss:
-            vuln.epss_score = float(cached_epss.get("epss", vuln.epss_score))
-            vuln.epss_percentile = float(cached_epss.get("percentile", vuln.epss_percentile))
-            if vuln.epss_score >= 0.4:
+        for cve in candidates:
+            if self.is_in_kev(cve):
+                vuln.in_kev = True
                 vuln.exploit_available = True
+                break
+
+        for cve in candidates:
+            cached_epss = CacheService.get(f"threat_intel:epss:{cve}")
+            if cached_epss:
+                vuln.epss_score = float(cached_epss.get("epss", vuln.epss_score))
+                vuln.epss_percentile = float(cached_epss.get("percentile", vuln.epss_percentile))
+                if vuln.epss_score >= 0.4:
+                    vuln.exploit_available = True
+                break
 
         return vuln
 

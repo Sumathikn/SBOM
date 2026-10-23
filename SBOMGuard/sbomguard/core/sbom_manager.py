@@ -29,9 +29,7 @@ class SBOMManager:
 
     def compare(self, sbom_a_id: str, sbom_b_id: str) -> dict:
         """
-        Compare two SBOMs and produce an advanced version drift analysis.
-        Includes SemVer drift categorization (Major/Minor/Patch), breaking risks,
-        direct vs transitive breakdown, and tree diff representation.
+        Compare two SBOMs by ID and produce an advanced version drift analysis.
         """
         sbom_a = get_sbom(sbom_a_id)
         sbom_b = get_sbom(sbom_b_id)
@@ -41,8 +39,25 @@ class SBOMManager:
         if not sbom_b:
             raise ValueError(f"Target SBOM not found: {sbom_b_id}")
 
-        comps_a = {c["name"]: c for c in sbom_a.get("components", [])}
-        comps_b = {c["name"]: c for c in sbom_b.get("components", [])}
+        return self.compare_sbom_dicts(sbom_a, sbom_b, sbom_a_id=sbom_a_id, sbom_b_id=sbom_b_id)
+
+    def compare_sbom_dicts(
+        self,
+        sbom_a: dict,
+        sbom_b: dict,
+        sbom_a_id: Optional[str] = None,
+        sbom_b_id: Optional[str] = None,
+    ) -> dict:
+        """
+        Compare two SBOM dictionaries (CycloneDX or SPDX) and produce an advanced version drift analysis.
+        Includes SemVer drift categorization (Major/Minor/Patch), breaking risks,
+        direct vs transitive breakdown, and tree diff representation.
+        """
+        raw_comps_a = sbom_a.get("components") or sbom_a.get("packages") or []
+        raw_comps_b = sbom_b.get("components") or sbom_b.get("packages") or []
+
+        comps_a = {c["name"]: c for c in raw_comps_a}
+        comps_b = {c["name"]: c for c in raw_comps_b}
 
         names_a = set(comps_a.keys())
         names_b = set(comps_b.keys())
@@ -105,20 +120,22 @@ class SBOMManager:
 
         return {
             "sbom_a": {
-                "id": sbom_a_id,
+                "id": sbom_a_id or sbom_a.get("sbom_id", "local_a"),
                 "name": sbom_a.get("name", ""),
                 "version": sbom_a.get("version", "1"),
                 "component_count": len(comps_a),
                 "created_at": sbom_a.get("created_at"),
             },
             "sbom_b": {
-                "id": sbom_b_id,
+                "id": sbom_b_id or sbom_b.get("sbom_id", "local_b"),
                 "name": sbom_b.get("name", ""),
                 "version": sbom_b.get("version", "1"),
                 "component_count": len(comps_b),
                 "created_at": sbom_b.get("created_at"),
             },
             "stats": {
+                "total_a": len(comps_a),
+                "total_b": len(comps_b),
                 "added_count": len(added),
                 "removed_count": len(removed),
                 "modified_count": len(version_changes),
